@@ -23,6 +23,23 @@ void populateImageArray(cv::Mat image, float* imageArray) {
 	}
 }
 
+cv::Mat arrayToImage(float* imageArray, int rows, int cols, int channels) {
+	try {
+		cv::Mat image(rows, cols, CV_32FC3, imageArray);
+
+		// Convert the float point to 8bit image
+		cv::Mat outputImage;
+		image.convertTo(outputImage, CV_8UC3, 255.0);
+
+		return outputImage;
+	}
+	catch (cv::Exception& e) {
+		const char* err_msg = e.what();
+		std::cerr << "Exception caught: " << err_msg << std::endl;
+		throw e;
+	}
+}
+
 int main() {
 
 	int deviceCount;
@@ -71,19 +88,11 @@ int main() {
 	/*cudaMemPrefetchAsync(paddedImageArray, paddedImageSize, deviceId);
 	cudaMemPrefetchAsync(imageArray, imageSize, deviceId);*/
 
-	printf("here");
-
 	// Call kernel to add padding to imageArray with error handling
 
 	cudaError_t cudaStatus;
 	imagePaddingGPU <<< numBlocks, blockSize >>> (paddedImageArray, imageArray, rows, cols, channels, paddingSize);
 	cudaDeviceSynchronize();
-
-	// print items from arrays to see if they are the same
-	for (int i = 100; i < 120; i++) {
-		std::cout << "imageArray[" << i << "] = " << imageArray[i] << std::endl;
-		std::cout << "paddedImageArray[" << i << "] = " << paddedImageArray[i] << std::endl;
-	}
 
 	cudaStatus = cudaGetLastError();
 	if (cudaStatus != cudaSuccess) {
@@ -92,20 +101,64 @@ int main() {
 
 	// Now that we have the padded image, we can perform 3x3 convolution using fixed filter
 	// Define filter
-	float filter[FILTER_SIZE * FILTER_SIZE] = {
-		0.1111f, 0.4111f, 0.2111f,
-		0.5711f, 0.1211f, 0.1311f,
-		0.1831f, 0.1211f, 0.3614f
+	float h_filter[FILTER_SIZE * FILTER_SIZE] = {
+		0.625f, 0.125f, 0.625f,
+		0.125f, 0.25f, 0.125f,
+		0.625f, 0.125f, 0.625f
 	};
+
+	float* d_filter;
+	cudaMalloc(&d_filter, FILTER_SIZE * FILTER_SIZE * sizeof(float));
+	cudaMemcpy(d_filter, h_filter, FILTER_SIZE * FILTER_SIZE * sizeof(float), cudaMemcpyHostToDevice);
 
 	// Allocate memory for output image
 	float* opImageArray;
-	cudaMallocManaged(&opImageArray, imageSize);
+	size_t opImageSize = image.rows * image.cols * image.channels() * sizeof(float);
+	cudaMallocManaged(&opImageArray, opImageSize);
+
+	int paddedWidth = cols + 2 * paddingSize;
+	int paddedHeight = rows + 2 * paddingSize;
 
 	// Call kernel to perform convolution
-	convolution_RGB <<< numBlocks, blockSize >>> (paddedImageArray, opImageArray, filter, rows, cols, channels, FILTER_SIZE);
+	convolution_RGB <<< numBlocks, blockSize >>> (paddedImageArray, opImageArray, d_filter, paddedWidth, paddedHeight, rows, cols, channels, FILTER_SIZE);
+	cudaDeviceSynchronize();
 
+	cudaStatus = cudaGetLastError();
+	if (cudaStatus != cudaSuccess) {
+		fprintf(stderr, "convolution_RGB kernel launch failed: %s\n", cudaGetErrorString(cudaStatus));
+		return -1;
+	}
 
+	// print some numbers from opimagearray
+
+	for (int i = 0; i < 10; i++) {
+		std::cout << opImageArray[i] << std::endl;
+	}
+
+	// Move opImageArray memory back to host
+	// cudaMemPrefetchAsync(opImageArray, imageSize, cudaCpuDeviceId);
+
+	// Convert opImageArray to opImage
+	printf("Converting array to image... \n");
+
+	cv::Mat outputImage = arrayToImage(opImageArray, rows, cols, channels);
+
+	printf("Conversion complete. \n");
+	printf("Saving image to root directory... \n");
+
+	std::string filename = "output_image.jpg";
+	bool saveStatus = cv::imwrite(filename, outputImage);
+
+	printf("Image saved. \n");
+
+	if (saveStatus) {
+		std::cout << "Image successfully saved to the root directory as " << filename << std::endl;
+	}
+	else {
+		std::cerr << "Failed to save the image." << std::endl;
+	}
+
+	cudaFree(d_filter);
 	cudaFree(imageArray);
 	cudaFree(paddedImageArray);
 	cudaFree(opImageArray);
