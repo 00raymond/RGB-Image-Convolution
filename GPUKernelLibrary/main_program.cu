@@ -36,7 +36,6 @@ int main() {
 	cudaGetDevice(&deviceId);
 
 	// Load image
-	// get image from path assets/Sample-jpg-image.jpg
 	std::string imagePath = "test.jpg";
 	cv::Mat image = cv::imread(imagePath);
 
@@ -104,11 +103,12 @@ int main() {
 	cudaMallocManaged(&opImageArray, imageSize);
 
 	// Call kernel to perform convolution
-	convolution_RGB <<< numBlocks, blockSize >>> (paddedImageArray, opImageArray, filter, rows, cols, FILTER_SIZE);
+	convolution_RGB <<< numBlocks, blockSize >>> (paddedImageArray, opImageArray, filter, rows, cols, channels, FILTER_SIZE);
 
 
 	cudaFree(imageArray);
 	cudaFree(paddedImageArray);
+	cudaFree(opImageArray);
 
 }
 
