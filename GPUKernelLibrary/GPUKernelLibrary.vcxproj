@@ -78,15 +78,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <CudaCompile Include="2DConvolution_RGB.cu" />
-    <CudaCompile Include="kernel.cu" />
+    <CudaCompile Include="imagePadding.cu" />
+    <CudaCompile Include="main_program.cu" />
     <CudaCompile Include="matrixmultiplykernel.cu" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="2DConvolution_RGB.cuh" />
+    <ClInclude Include="imagePadding.cuh" />
     <ClInclude Include="matrixmultiplykernel.cuh" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="main.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
